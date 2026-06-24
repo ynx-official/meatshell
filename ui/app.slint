@@ -2635,11 +2635,12 @@ export component AppWindow inherits Window {
     }
 
     // Host-key confirmation (#109-5). Reuses the confirm-dialog card; the
-    // backdrop / Cancel both reject (safe default = don't connect).
+    // answer must be explicit, so the backdrop does nothing and Cancel rejects.
     ConfirmDialog {
         width: parent.width;
         height: parent.height;
         is-open <=> root.hostkey-prompt-open;
+        cancel-on-backdrop: false;
         title: root.hostkey-title;
         message: root.hostkey-message;
         detail: root.hostkey-detail;

@@ -38,17 +38,22 @@ export component ConfirmDialog inherits Rectangle {
     in property <string> message;
     in property <string> detail;                  // optional, e.g. the file path
     in property <string> confirm-label: @tr("Confirm");
+    in property <bool> cancel-on-backdrop: true;
     callback confirm();
     callback cancel();
 
     visible: is-open;
     background: #000000aa;
 
-    // Backdrop click cancels.
+    // Backdrop click cancels when enabled by the caller.
     TouchArea {
         width: 100%;
         height: 100%;
-        clicked => { root.cancel(); }
+        clicked => {
+            if (root.cancel-on-backdrop) {
+                root.cancel();
+            }
+        }
     }
 
     Rectangle {

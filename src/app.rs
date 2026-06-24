@@ -623,6 +623,7 @@ pub fn run() -> Result<()> {
     {
         let weak = window.as_weak();
         window.on_hostkey_accept(move || {
+            tracing::info!("hostkey ui click accept");
             if let Some(w) = weak.upgrade() {
                 resolve_front_hostkey(&w, true);
             }
@@ -631,6 +632,7 @@ pub fn run() -> Result<()> {
     {
         let weak = window.as_weak();
         window.on_hostkey_reject(move || {
+            tracing::info!("hostkey ui click reject");
             if let Some(w) = weak.upgrade() {
                 resolve_front_hostkey(&w, false);
             }
@@ -3248,12 +3250,25 @@ fn enqueue_hostkey_prompt(
 ) {
     let id = format!("{host}:{port}");
     if let Some(ans) = HOSTKEY_DECIDED.with(|d| d.borrow().get(&id).copied()) {
+        tracing::info!(
+            "hostkey ui reuse remembered decision {}:{} accept={}",
+            host,
+            port,
+            ans
+        );
         responder.respond(ans);
         return;
     }
     let show_now = HOSTKEY_QUEUE.with(|q| {
         let mut q = q.borrow_mut();
         if let Some(p) = q.iter_mut().find(|p| p.host == host && p.port == port) {
+            tracing::info!(
+                "hostkey ui merge duplicate prompt {}:{} existing_waiters={} -> {}",
+                host,
+                port,
+                p.responders.len(),
+                p.responders.len() + 1
+            );
             p.responders.push(responder);
             return false;
         }
@@ -3270,6 +3285,12 @@ fn enqueue_hostkey_prompt(
             confirm_label,
             responders: vec![responder],
         });
+        tracing::info!(
+            "hostkey ui enqueue prompt queue_len={} show_now={} changed={}",
+            q.len(),
+            was_empty,
+            changed
+        );
         was_empty
     });
     if show_now {
@@ -3281,6 +3302,13 @@ fn enqueue_hostkey_prompt(
 fn show_front_hostkey(win: &AppWindow) {
     HOSTKEY_QUEUE.with(|q| {
         if let Some(p) = q.borrow().front() {
+            tracing::info!(
+                "hostkey ui show dialog {}:{} changed={} waiters={}",
+                p.host,
+                p.port,
+                p.changed,
+                p.responders.len()
+            );
             win.set_hostkey_changed(p.changed);
             win.set_hostkey_title(p.title.clone().into());
             win.set_hostkey_message(p.message.clone().into());
@@ -3294,9 +3322,17 @@ fn show_front_hostkey(win: &AppWindow) {
 /// Apply the user's decision to the front prompt, then show the next one (or
 /// close the dialog if the queue is now empty).
 fn resolve_front_hostkey(win: &AppWindow, accept: bool) {
+    tracing::info!("hostkey ui resolve accept={}", accept);
     let has_next = HOSTKEY_QUEUE.with(|q| {
         let mut q = q.borrow_mut();
         if let Some(p) = q.pop_front() {
+            tracing::info!(
+                "hostkey ui apply decision {}:{} accept={} waiters={}",
+                p.host,
+                p.port,
+                accept,
+                p.responders.len()
+            );
             HOSTKEY_DECIDED.with(|d| {
                 d.borrow_mut().insert(format!("{}:{}", p.host, p.port), accept);
             });
@@ -3309,6 +3345,7 @@ fn resolve_front_hostkey(win: &AppWindow, accept: bool) {
     if has_next {
         show_front_hostkey(win);
     } else {
+        tracing::info!("hostkey ui close dialog");
         win.set_hostkey_prompt_open(false);
     }
 }
