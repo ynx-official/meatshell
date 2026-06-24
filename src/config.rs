@@ -239,7 +239,7 @@ fn default_parity() -> String {
 /// the user picks anything (including "无"/none, stored as ""), their choice is
 /// saved and sticks.
 fn default_wallpaper() -> String {
-    "builtin:tech".to_string()
+    "builtin:light".to_string()
 }
 /// A brand-new config (no file yet, or the old one was corrupt). Identical to
 /// `ConfigFile::default()` except it seeds the default wallpaper, which the
