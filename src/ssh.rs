@@ -1422,14 +1422,6 @@ pub(crate) async fn verify_host_key(
 ) -> bool {
     use crate::known_hosts::HostKeyStatus;
     let status = crate::known_hosts::verify(host, port, key);
-    tracing::info!(
-        "hostkey verify {}:{} status={:?} key_type={} fingerprint={}",
-        host,
-        port,
-        status,
-        key.algorithm(),
-        crate::known_hosts::fingerprint(key)
-    );
     match status {
         HostKeyStatus::Match => true,
         status => {
@@ -1447,26 +1439,14 @@ pub(crate) async fn verify_host_key(
                 tracing::warn!("hostkey prompt send failed for {}:{}", host, port);
                 return false; // no UI to ask
             }
-            tracing::info!(
-                "hostkey prompt queued for {}:{} changed={}",
-                host,
-                port,
-                changed
-            );
             match rx.await {
                 Ok(true) => {
-                    tracing::info!("hostkey prompt accepted for {}:{}", host, port);
                     if let Err(e) = crate::known_hosts::remember(host, port, key) {
                         tracing::warn!("could not save host key for {host}:{port}: {e:#}");
-                    } else {
-                        tracing::info!("hostkey saved for {}:{}", host, port);
                     }
                     true
                 }
-                Ok(false) => {
-                    tracing::warn!("hostkey prompt rejected for {}:{}", host, port);
-                    false
-                }
+                Ok(false) => false,
                 Err(_) => {
                     tracing::warn!("hostkey prompt channel dropped for {}:{}", host, port);
                     false
