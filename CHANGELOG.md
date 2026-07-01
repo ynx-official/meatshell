@@ -3,6 +3,226 @@
 All notable changes are documented here. 本文件记录所有重要变更。
 中英对照（English first, 中文在后）.
 
+## [0.5.0] - 2026-06-30
+
+### Added / 新增
+
+- **分屏(IDEA 式拖动分屏)。** 标签右键「向右拆分 / 向下拆分」,或直接把标签拖到某个 pane 的上/下/左/右
+  边缘(带高亮预览)即可分屏;中间的分隔条可拖动调整两边比例,支持任意嵌套。每个 pane 有自己独立的标签组
+  和当前标签;关掉某个 pane 的最后一个标签会自动折叠回去。
+  **Split panes (IDEA-style drag-to-split).** Right-click a tab → "Split right / Split down", or just
+  drag a tab to a pane's top / bottom / left / right edge (with a highlight preview) to split; drag the
+  splitter between panes to rebalance, nest arbitrarily. Each pane has its own tab group and active tab;
+  closing a pane's last tab collapses it back.
+
+- **复制打开(再开一个当前会话)。** 终端标签右键「复制打开」,对当前会话再开一条独立连接,落在同一个 pane。
+  **Duplicate connection.** A terminal tab's right-click menu opens a second, independent connection to
+  the same session, landing in the same pane.
+
+- **欢迎页可设为侧栏 + IDEA 式收起抽屉。** 设置 → 界面 → 欢迎页,可把会话列表停靠到左侧(不再占用一个「新
+  标签页」标签),打开的会话占据中央;欢迎页 / 资源面板 / SFTP 收起后都变成沿停靠边的「图标条」(点图标
+  展开),取代原来的箭头展开按钮。欢迎侧栏宽度可拖动调整。
+  **Welcome page as a sidebar + IDEA-style collapse drawers.** Interface → Welcome page can dock the
+  session list on the left (no more "New tab" tab); opened sessions fill the centre. The welcome /
+  resource / SFTP panels now collapse to an icon strip along their docked edge (click to re-open),
+  replacing the old arrow expand button. The welcome sidebar is drag-resizable.
+
+- **沉浸式壁纸遮罩透明度可调 + 界面字体大小。** 设置 → 界面 → 壁纸 新增「壁纸遮罩透明度」拖动条,自己调
+  壁纸透出的程度(只影响背景填充,不动文字);设置 → 界面 → 字体 新增「界面字体大小」,可单独放大设置面板。
+  **Adjustable wallpaper-overlay opacity + settings font size.** Interface → Wallpaper adds a
+  "Wallpaper transparency" slider controlling how much the wallpaper shows through (background fills
+  only, text untouched); Interface → Font adds a "Settings font size" control to enlarge the panel.
+
+- **每个会话独立记住自己的 SFTP 状态。** SFTP 的收起 / 高度 / 宽度改为按会话独立,分屏下各 pane 互不影响
+  (新会话默认读「默认收起 SFTP」等公共配置)。
+  **Per-session SFTP state.** SFTP collapse / height / width are now remembered per session, so split
+  panes no longer interfere with one another (new sessions seed from the shared defaults).
+
+### Fixed / 修复
+
+- **设置面板字体发虚。** 设置卡片居中后落在半像素位置,导致面板内文字渲染在亚像素偏移上而发虚;现对齐到
+  整数逻辑像素,和资源面板一样清晰。
+  **Blurry settings-panel text.** The settings card was centred on a half-pixel, so its text rendered on
+  subpixel offsets and looked soft; it now snaps to whole logical pixels, as crisp as the resource panel.
+
+## [0.4.20] - 2026-06-28
+
+### Added / 新增
+
+- **终端内容随窗口缩放重排 (reflow) (#169)。** 此前拖动窗口宽度时,已打印的内容会被截断(变窄丢右半、
+  变宽接不回)。现保留喂给 vt100 的字节流(限长 2 MiB),窗口宽度变化时用新宽度重放一遍,历史与当前屏
+  按新宽度重新折行——变窄换行、变宽接回,全程不丢字符;对齐 FinalShell。alt-screen(tmux/vim)仍由
+  远端 SIGWINCH 重绘。
+  **Terminal content reflows on window resize (#169).** Dragging the width used to clip already-printed
+  lines. meatshell now retains a capped (2 MiB) copy of the byte stream and replays it at the new width,
+  rewrapping scrollback and the live screen with no lost characters, matching FinalShell. Alt-screen
+  programs (tmux/vim) still rely on the remote's SIGWINCH redraw.
+
+- **alt-screen 里把鼠标滚轮转发给程序 (#170)。** 之前在 tmux / less / vim 等全屏程序里滚轮被吞掉、滚不动。
+  现转发给远端:程序开了鼠标跟踪(如 tmux `mouse on`)就发滚轮鼠标事件(SGR / X10),否则退化为方向键
+  (alternate-scroll),让 less / man / vim 也能滚。对齐 FinalShell / MobaXterm。
+  **Forward the mouse wheel to alt-screen programs (#170).** In tmux / less / vim the wheel did nothing.
+  It is now forwarded — a mouse-wheel event when the app tracks the mouse (e.g. tmux `mouse on`), else
+  arrow keys (alternate-scroll) so less / man / vim scroll. Matches FinalShell / MobaXterm.
+
+- **文本批量导入 SSH 连接 (#150)。** 设置菜单新增「批量导入(文本)」,每行 `host|port|user|password|name`
+  (后面字段可省略),一次粘贴导入多台主机;按 host+user+port 去重,密码加密入库。
+  **Batch-import SSH connections from text (#150).** A new "Batch import (text)" menu item accepts
+  `host|port|user|password|name` per line (trailing fields optional), importing many hosts from one
+  paste; dedupes by host+user+port, passwords encrypted at rest.
+
+- **新建 / 编辑会话的「分组」改为可输入下拉框 (#179)。** 既能手输新分组,也能点 ▼ 从已有分组里选。
+  **The session dialog's "Group" field is now an editable dropdown (#179).** Type a new group, or pick
+  an existing one from the ▼ list.
+
+- **终端支持 Shift+Insert 粘贴 (#144)。** X11 / xterm 的经典粘贴键现在也认。
+  **Paste with Shift+Insert in the terminal (#144).** The classic X11 / xterm paste shortcut now works.
+
+### Fixed / 修复
+
+- **主机密钥被拒后不再卡死新连接 (#152)。** 首次连接弹「未知主机」确认框时,若误点卡片外背景把它关掉,
+  之前会把该主机缓存成「拒绝」,导致这一轮运行里之后每次连它都直接报 "Unknown server key",必须重启。
+  现在:拒绝不再写缓存(下次连接照常再弹),且安全确认框不再响应背景点击关闭。
+  **A rejected host key no longer locks out new connections (#152).** Dismissing the "Unknown host"
+  dialog by clicking the backdrop used to cache a reject for the whole run, so every later connect
+  failed with "Unknown server key" until restart. Rejections are no longer cached (the next connect
+  prompts again), and the security dialog no longer dismisses on a backdrop click.
+
+- **兼容旧服务器算法,修复 "No common algorithm" 连不上 (#172)。** russh 默认只协商现代算法,老服务器 /
+  网络设备只支持旧 KEX(group14 / group1-sha1)或 CBC 加密时握手失败。现把这些作为兜底追加(现代算法
+  仍优先),终端与 SFTP 一致,旧设备也能连。
+  **Reach legacy servers, fixing "No common algorithm" (#172).** russh's defaults negotiate only modern
+  algorithms; old servers / gear that only speak legacy KEX (group14 / group1-sha1) or CBC ciphers failed
+  the handshake. These are now offered as fallbacks (modern still preferred) for both the shell and SFTP.
+
+- **SFTP 文件修改时间按本地时区显示 (#168)。** 之前按 UTC 显示,UTC+8 用户看到的时间差 8 小时。现用本机
+  时区换算(跟随系统,不写死)。
+  **SFTP file mtime shown in local time (#168).** It was rendered as UTC (8 h early for a UTC+8 user);
+  now converted to the machine's local timezone.
+
+- **Linux 缩放窗口后鼠标卡在缩放态 (#159)。** 从边角缩放后,窗口管理器吃掉了结束缩放的松开事件,Slint
+  一直保持着对缩放热区的指针抓取——之后到处点都触发缩放。现在缩放后主动补一个释放事件让 Slint 丢掉抓取
+  (X11 必现、Wayland 偶发都修)。
+  **Mouse stuck in resize mode after a Linux window resize (#159).** The window manager consumed the
+  button-release that ends a resize, so Slint kept its pointer grab on the resize handle and every click
+  re-started a resize. We now dispatch a synthetic release afterwards so Slint drops the grab (fixes both
+  the reliable X11 case and the occasional Wayland one).
+
+- **shell 集成回显抑制窗口 1.2s→2s (#176)。** 慢速 PTY / SSH 上,注入的初始化命令回显 + OSC 7 晚于 1.2s
+  到达,导致回退过早、注入行泄漏到终端。放宽到 2s。
+  **Widen the shell-integration echo-suppression window 1.2s→2s (#176).** On slow PTY / SSH the injected
+  setup line's echo + OSC 7 arrived after 1.2 s, so it fell back early and the line leaked into the
+  terminal.
+
+- **设置菜单加批量导入后溢出 (#150)。** 设置下拉菜单原来写死高度,加第 8 项后末项溢出圆角背景;改为跟随
+  内容高度自适应。
+  **Settings menu overflowed after the batch-import entry (#150).** The dropdown had a hardcoded height;
+  it now sizes to its content.
+
+### Performance / 性能
+
+- **合并 shell 输出事件,修复 tail -f 等高频输出导致界面假死 (#171)。** 事件泵原来逐个把每段输出投递到 UI
+  线程并整屏渲染,`tail -f` / 大文件刷屏时 UI 被淹没成假死。现一次性扫空已排队事件、合并相邻输出,一波
+  突发只解析 + 渲染一次,界面保持响应。
+  **Coalesce shell output events, fixing the tail -f UI freeze (#171).** The pump dispatched every output
+  chunk to the UI thread for a full render; under high-frequency output the UI drowned. It now drains
+  queued events at once and merges adjacent output, parsing + rendering a burst once.
+
+## [0.4.19] - 2026-06-28
+
+### Added / 新增
+
+- **macOS 沉浸式标题栏 (#162)。** 此前 Mac 保留原生标题栏,暗模式下顶部是一条突兀的白条。现把
+  原生标题栏设为透明并让窗口内容延伸到其下(fullSizeContentView),标题栏改为显示窗口底色 / 壁纸,
+  跟随暗 / 浅色;顶部预留交通灯按钮的位置并做磨砂,与其它面板统一。Windows/Linux 不受影响。
+  **Immersive title bar on macOS (#162).** macOS kept the native title bar, which showed a jarring
+  white strip at the top in dark mode. The native title bar is now transparent with the window content
+  extending under it (fullSizeContentView), so it shows the window background / wallpaper and follows
+  dark / light; the top reserves room for the traffic-light buttons and is frosted to match the other
+  panels. Windows/Linux unaffected.
+
+### Fixed / 修复
+
+- **修正 macOS 快捷键映射,0.4.18 写反了 (#158)。** Slint 在 macOS 上把 `control` 报成 Cmd(⌘)、
+  `meta` 报成物理 Ctrl,0.4.18 正好用反,导致 ⌘ 快捷键不触发、物理 Ctrl 反而误触发,基本不可用。
+  本版改正并在真机(Mac mini M4)逐一验证:⌘C / ⌘V / ⌘F / ⌘⇧R / ⌘S 正常触发,物理 Ctrl 的
+  ^C / ^X / ^U / ^W 正常直达 shell。另外 macOS 上 Cmd+字母 经 Slint 送来的是控制字符(⌘S = `\u{13}`),
+  编辑器保存据此补上识别,修复 ⌘S 失灵。
+  **Corrected the macOS shortcut mapping that 0.4.18 had backwards (#158).** On macOS Slint reports
+  `control` as Cmd (⌘) and `meta` as the physical Ctrl; 0.4.18 used them the wrong way round, so ⌘
+  shortcuts did nothing and the physical Ctrl triggered them instead — essentially unusable. This
+  release fixes it and verifies every case on real hardware (Mac mini M4): ⌘C / ⌘V / ⌘F / ⌘⇧R / ⌘S
+  fire correctly and the physical Ctrl's ^C / ^X / ^U / ^W reach the shell. Also, on macOS Cmd+letter
+  arrives as a control char (⌘S = `\u{13}`), so the editor's save now recognizes that form too, fixing ⌘S.
+
+## [0.4.18] - 2026-06-26
+
+### Added / 新增
+
+- **Windows 11 圆角窗口 + 投影 (#162 / #166)。** 自绘标题栏的无边框窗口此前是直角、无阴影,
+  不符合 Win11 风格。现用 DWM 给它补上系统**圆角**(DWMWA_WINDOW_CORNER_PREFERENCE)和**投影**
+  (DwmExtendFrameIntoClientArea);Win10 自动忽略圆角属性,其他平台无影响。
+  **Native rounded corners + drop shadow on Windows 11 (#162 / #166).** The frameless window (custom
+  title bar) had square corners and no shadow. DWM now gives it the system rounded corners and
+  shadow; ignored on Windows 10, a no-op elsewhere.
+
+- **macOS 上 app 快捷键改用 Cmd(⌘),释放 Ctrl 给终端 (#158)。** Mac 有 Ctrl 和 Cmd 两个键,之前
+  app 快捷键全占了 Ctrl,导致 nano 里 ^X 等控制键发不到 shell。现按 macOS 习惯:查找 / 复制 /
+  粘贴 / 历史 / 保存用 ⌘,物理 Ctrl 原样直达 shell;命令框的 Ctrl+A/E/K/U 行编辑保留 Ctrl;设置 →
+  快捷键也显示 ⌘ / ⌃。Windows/Linux 不变。
+  **macOS app shortcuts now use Cmd (⌘), freeing Ctrl for the terminal (#158).** macOS has both Ctrl
+  and Cmd; app shortcuts all used Ctrl, so terminal control keys (^X in nano…) couldn't reach the
+  shell. Now find / copy / paste / history / save use ⌘ and the physical Ctrl passes straight through;
+  the command box's Ctrl+A/E/K/U line editing stays on Ctrl; Settings → Shortcuts shows ⌘ / ⌃.
+  Windows/Linux unchanged.
+
+### Fixed / 修复
+
+- **SFTP 闲置一段时间后失效 (#160)。** SFTP 连接没有 keepalive,空闲时被 NAT / 防火墙 / 服务器空闲
+  超时掐断,之后点目录"文件夹读取失败"、增删改全废。两条连接(终端 + SFTP)现都加 30s keepalive
+  保活,真死了由 keepalive_max 关闭。
+  **SFTP stopped working after sitting idle (#160).** The SFTP connection had no keepalive, so it was
+  silently dropped by NAT / firewall / server idle timeouts; afterwards every operation failed. Both
+  connections now send a 30 s keepalive, with keepalive_max still closing a genuinely dead one.
+
+- **git clone / curl 输出在极窄列(~10)乱折行 (#163)。** 布局回流时 root.width 瞬间读成 ≈0,终端
+  列数塌到下限 10 并立刻 resize 远程 PTY,正在跑的输出就按 10 列乱折。现给 PTY resize 加 150ms
+  防抖,只应用静置后的尺寸,一闪而过的坏值不再发到服务器。
+  **git clone / curl output wrapped at ~10 columns (#163).** A layout reflow momentarily reported a
+  near-zero width, collapsing the terminal column count to its floor of 10 and resizing the remote
+  PTY, which garbled in-flight output. PTY resizes are now debounced (150 ms) so only the settled
+  size reaches the server.
+
+- **设置 / 下载下拉菜单在资源面板停靠时错位。** 资源面板停右 / 上时齿轮 / 下载按钮会随工具栏位移,
+  但两个下拉用的是固定坐标,会飘到资源面板上。现让下拉跟随按钮位移。
+  **Settings / download dropdowns floated over the docked resource panel.** The gear / download
+  buttons shift with the toolbar when the resource panel docks right / top, but the two dropdowns
+  used fixed coordinates. They now follow their buttons.
+
+- **浅色模式次要 / 弱化文字太浅。** 沉浸壁纸 + 浅色下,副标题、磁盘 / 路径标签、说明文字等灰得发飘、
+  对比度差。浅色模式的 text-secondary / text-muted 已加深(深色模式不变)。
+  **Faint secondary / muted text in light mode.** With the immersive wallpaper + light mode,
+  subtitles, disk / path labels and hints were too pale on the bright background. Light-mode
+  secondary / muted text is darkened (dark mode unchanged).
+
+- **沉浸壁纸下,收起的资源面板展开按钮旁露出"黑块"。** 给展开按钮预留的 30px 空位没有背景,露出
+  底下深色壁纸,浅色主题里就是一小块黑。现补上与按钮一致的磨砂背景。
+  **A "black block" next to the collapsed resource-panel expand button in immersive mode.** The 30px
+  gap reserved for the expand button had no background and showed the raw (dark) wallpaper; it now
+  uses the same frosted background as the button.
+
+### Security / 安全
+
+- **记录 RUSTSEC-2026-0154 不可达,暂不升级 russh (#151)。** 该 DoS 在 russh 的 ssh-agent 帧解析,
+  meatshell 完全不用 ssh-agent,漏洞代码路径在本二进制里不可达、不可利用;而唯一修复版
+  (russh ≥ 0.60.3)会引入一堆**预发布**加密库(ed25519-dalek pre、aes-gcm rc…),在 SSH 客户端里
+  用未审计的 rc 密码库风险更大。故 russh 暂留 0.49,等其依赖脱离 -rc 再迁移;新增 audit.toml 附完整理由。
+  **Documented RUSTSEC-2026-0154 as unreachable; holding russh at 0.49 (#151).** The DoS is in russh's
+  ssh-agent frame parsing, which meatshell never uses — the path is dead code here. The only patched
+  russh (>= 0.60.3) drags in a stack of pre-release crypto crates, a worse trade than this unreachable
+  DoS, so russh stays at 0.49 until its deps leave the -rc channel. Adds audit.toml with the full
+  rationale.
+
 ## [0.4.17] - 2026-06-24
 
 ### Added / 新增

@@ -65,11 +65,14 @@ pub fn format_size(bytes: u64) -> String {
 
 /// Format a Unix timestamp as `YYYY-MM-DD HH:MM`.
 pub fn format_mtime(ts: u32) -> String {
-    use chrono::{DateTime, TimeZone, Utc};
-    let dt: DateTime<Utc> = Utc
+    // SFTP mtime is a Unix timestamp (UTC seconds). Render it in the machine's
+    // *local* timezone so the displayed time matches the user's wall clock
+    // (e.g. UTC+8) instead of showing UTC — which read 8 h early (#168).
+    use chrono::{Local, TimeZone};
+    let dt = Local
         .timestamp_opt(ts as i64, 0)
         .single()
-        .unwrap_or_else(Utc::now);
+        .unwrap_or_else(Local::now);
     dt.format("%Y-%m-%d %H:%M").to_string()
 }
 
@@ -552,6 +555,44 @@ async fn connect_ssh(
     Ok(handle)
 }
 
+// Key-exchange algorithms offered to the server, strongest first. This is the
+// russh default set PLUS the ecdh-sha2-nistp* curves and the legacy
+// diffie-hellman-group{14,1}-sha1 exchanges appended as last-resort fallbacks, so
+// we can still reach old servers / network gear that only speak SHA-1 KEX and
+// otherwise fail with "No common algorithm" (#172). Modern servers still pick a
+// strong algorithm because the client's order decides and SHA-1 is last.
+pub(crate) const COMPAT_KEX: &[russh::kex::Name] = &[
+    russh::kex::CURVE25519,
+    russh::kex::CURVE25519_PRE_RFC_8731,
+    russh::kex::DH_G16_SHA512,
+    russh::kex::DH_G14_SHA256,
+    russh::kex::ECDH_SHA2_NISTP256,
+    russh::kex::ECDH_SHA2_NISTP384,
+    russh::kex::ECDH_SHA2_NISTP521,
+    russh::kex::DH_G14_SHA1, // legacy fallback
+    russh::kex::DH_G1_SHA1,  // legacy fallback
+    // Keep the OpenSSH ext-info / strict-kex markers so modern servers still
+    // negotiate ext-info and strict kex (mirrors russh's default tail).
+    russh::kex::EXTENSION_SUPPORT_AS_CLIENT,
+    russh::kex::EXTENSION_SUPPORT_AS_SERVER,
+    russh::kex::EXTENSION_OPENSSH_STRICT_KEX_AS_CLIENT,
+    russh::kex::EXTENSION_OPENSSH_STRICT_KEX_AS_SERVER,
+];
+
+// Ciphers offered to the server, strongest first: russh's AEAD/CTR defaults plus
+// the legacy CBC ciphers appended for old servers that only support CBC (#172).
+pub(crate) const COMPAT_CIPHER: &[russh::cipher::Name] = &[
+    russh::cipher::CHACHA20_POLY1305,
+    russh::cipher::AES_256_GCM,
+    russh::cipher::AES_256_CTR,
+    russh::cipher::AES_192_CTR,
+    russh::cipher::AES_128_CTR,
+    russh::cipher::AES_256_CBC, // legacy fallback
+    russh::cipher::AES_192_CBC, // legacy fallback
+    russh::cipher::AES_128_CBC, // legacy fallback
+    russh::cipher::TRIPLE_DES_CBC, // legacy fallback
+];
+
 async fn run_session(
     session: Session,
     mut commands: UnboundedReceiver<SessionCommand>,
@@ -566,7 +607,21 @@ async fn run_session(
     )));
 
     let config = Arc::new(client::Config {
-        inactivity_timeout: Some(std::time::Duration::from_secs(60 * 10)),
+        // Keep idle connections alive (#160). The terminal usually has the
+        // resource-monitor channel streaming every 2 s, but with shell
+        // integration disabled (#140) it can go idle and be dropped by
+        // NAT / firewall / server timeouts. A 30 s keepalive prevents that;
+        // keepalive_max (default 3) closes a genuinely dead connection.
+        keepalive_interval: Some(std::time::Duration::from_secs(30)),
+        // Offer legacy KEX (group14/group1-sha1) and CBC ciphers as fallbacks so
+        // old servers / network gear negotiate instead of failing with
+        // "No common algorithm" (#172). Modern algorithms stay first, so a capable
+        // server still picks a strong one.
+        preferred: russh::Preferred {
+            kex: std::borrow::Cow::Borrowed(COMPAT_KEX),
+            cipher: std::borrow::Cow::Borrowed(COMPAT_CIPHER),
+            ..russh::Preferred::DEFAULT
+        },
         ..<_>::default()
     });
 
@@ -933,11 +988,16 @@ async fn run_session(
                         {
                             prompt_injected = true;
                             suppress_echo = true;
-                            // Give the hook ~1.2 s to echo its OSC 7; past that we
+                            // Give the hook ~2 s to echo its OSC 7; past that we
                             // assume a non-POSIX shell and stop hiding output (#140-1).
+                            // 1.2 s was too tight for slow PTY/SSH servers — the echo
+                            // + OSC 7 landed after the deadline, so the injected setup
+                            // line leaked through (#176). The cost of the larger window
+                            // is only a slightly longer blank on a non-POSIX shell that
+                            // wasn't already flagged disable_shell_integration.
                             suppress_deadline = Some(
                                 tokio::time::Instant::now()
-                                    + std::time::Duration::from_millis(1200),
+                                    + std::time::Duration::from_millis(2000),
                             );
                             let _ = channel.data(prompt_setup.as_bytes()).await;
                             // Fall through: this chunk is buffered below so the
@@ -1102,6 +1162,13 @@ fn parse_monitor_block(
     let mut net_now: Vec<(String, u64, u64)> = Vec::new();
     // Filesystems from `df -kP`: (mount, available_bytes, total_bytes).
     let mut disks: Vec<(String, u64, u64)> = Vec::new();
+    // Dedup duplicate filesystems before they reach the panel (#38): NAS boxes
+    // (FNOS …) report the same underlying volume dozens of times — one Docker
+    // overlay mount per container layer, all with identical size. Like dropping rows
+    // into a Set: skip a (total, available) we've already shown. `df` lists the real
+    // mount first, so that's the one kept.
+    let mut seen_fs: std::collections::HashSet<(u64, u64)> =
+        std::collections::HashSet::new();
     // Processes from `ps` (#23): top-by-CPU rows.
     let mut procs: Vec<ProcInfo> = Vec::new();
     // The sample is split into sections by `echo` markers; everything before the
@@ -1130,8 +1197,13 @@ fn parse_monitor_block(
         match section {
             Section::Df => {
                 if disks.len() < MAX_MON_ENTRIES {
-                    if let Some(d) = parse_df_line(line) {
-                        disks.push(d);
+                    if let Some((mount, avail, total)) = parse_df_line(line) {
+                        // Set-style dedup: skip a filesystem whose (total, available)
+                        // we've already added — collapses the dozens of identical
+                        // Docker overlay mounts a NAS reports down to one row (#38).
+                        if seen_fs.insert((total, avail)) {
+                            disks.push((mount, avail, total));
+                        }
                     }
                 }
                 continue;
